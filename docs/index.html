@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Календарь</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button class="icon-btn" id="menuBtn" aria-label="Меню">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <h1 id="title">календарь</h1>
+      <button class="icon-btn" id="prevBtn" aria-label="Предыдущий месяц">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button class="icon-btn" id="nextBtn" aria-label="Следующий месяц">
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+      <button class="today-btn" id="todayBtn" aria-label="Сегодня"></button>
+    </header>
+
+    <main id="view"></main>
+
+    <button class="add-bar" id="addBar">
+      <span id="addLabel">Добавить</span>
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+
+  <nav class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-panel">
+      <div class="drawer-title">Календарь</div>
+      <button data-go="month">Месяц</button>
+      <button data-go="today">Сегодня / Завтра</button>
+      <div class="drawer-sep">Справочники</div>
+      <button data-go="dir:subjects">Предметы</button>
+      <button data-go="dir:teachers">Учителя</button>
+      <button data-go="dir:tutors">Репетиторы</button>
+      <button data-go="dir:subs">Подписки</button>
+      <button data-go="school">Расписание школы</button>
+      <div class="drawer-sep">Данные</div>
+      <button data-go="data">Синхронизация <span class="sync-dot" id="syncDot"></span></button>
+    </div>
+  </nav>
+
+  <div class="sheet-wrap" id="sheetWrap" aria-hidden="true">
+    <div class="sheet" id="sheet"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="tz.js"></script>
+  <script src="store.js"></script>
+  <script src="sync.js"></script>
+  <script src="events.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#111"/>
+  <rect x="96" y="128" width="320" height="288" rx="40" fill="#1e1e22" stroke="#8b7cff" stroke-width="20"/>
+  <rect x="96" y="128" width="320" height="72" rx="36" fill="#8b7cff"/>
+  <rect x="160" y="96" width="24" height="64" rx="12" fill="#f2f2f2"/>
+  <rect x="328" y="96" width="24" height="64" rx="12" fill="#f2f2f2"/>
+  <text x="256" y="360" text-anchor="middle" font-family="Segoe UI, Roboto, sans-serif" font-size="140" font-weight="700" fill="#f2f2f2">29</text>
+</svg>
