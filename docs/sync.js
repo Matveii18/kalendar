@@ -104,6 +104,11 @@ const Sync = (() => {
     }
   }
 
+  function b64uToBytes(s) {
+    const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
+    return Uint8Array.from(b, c => c.charCodeAt(0));
+  }
+
   return {
     init,
     get user() { return user; },
@@ -120,5 +125,34 @@ const Sync = (() => {
       setStatus('off', 'Вход не выполнен');
     },
     now() { schedule(0); },
+
+    // Уведомления: подписать это устройство на напоминания с сервера
+    async pushState() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+      if (Notification.permission === 'denied') return 'denied';
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg && await reg.pushManager.getSubscription();
+      return sub ? 'on' : 'off';
+    },
+    async enablePush() {
+      if (!user) throw new Error('Сначала войди');
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') throw new Error('Уведомления не разрешены');
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(CONFIG.vapidPublicKey) });
+      const json = sub.toJSON();
+      const { error } = await sb.from('push_subs').upsert(
+        { user_id: user.id, endpoint: json.endpoint, sub: json, device: navigator.userAgent.slice(0, 200) },
+        { onConflict: 'endpoint' });
+      if (error) throw error;
+    },
+    async disablePush() {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg && await reg.pushManager.getSubscription();
+      if (!sub) return;
+      if (sb && user) await sb.from('push_subs').delete().eq('endpoint', sub.endpoint);
+      await sub.unsubscribe();
+    },
   };
 })();

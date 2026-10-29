@@ -681,9 +681,17 @@ function renderData() {
         <div class="warn" id="loginErr"></div>
       </form>`;
 
+  const push = u ? `
+      <h3 class="sub-h">Уведомления</h3>
+      <div class="card">
+        <p class="hint">За 15 минут до занятия, вечером перед сдачей ДЗ и при смене расписания. Включи на каждом устройстве, где хочешь их получать.</p>
+        <div class="actions"><span id="pushState" class="hint">…</span><span class="grow"></span><button class="primary" id="pushBtn" hidden></button></div>
+      </div>` : '';
+
   view.innerHTML = `
     <div class="page">
       ${account}
+      ${push}
       <h3 class="sub-h">Резервная копия</h3>
       <p class="hint">Можно сохранить все записи в файл или загрузить их из файла.</p>
       <button class="primary wide" id="exportBtn">Сохранить в файл</button>
@@ -699,6 +707,7 @@ function renderData() {
     catch (e) { $('#loginErr').textContent = 'Не получилось войти: проверь почту и пароль'; }
   });
   if ($('#syncNow')) $('#syncNow').addEventListener('click', () => Sync.now());
+  if ($('#pushBtn')) refreshPush();
   if ($('#signOut')) $('#signOut').addEventListener('click', async () => {
     if (!confirm('Выйти? Записи на этом устройстве останутся, но перестанут синхронизироваться.')) return;
     await Sync.signOut(); render();
@@ -718,6 +727,25 @@ function renderData() {
     try { Store.importJson(await f.text()); toast('Загружено'); render(); }
     catch (e) { toast('Не получилось прочитать файл'); }
   });
+}
+
+async function refreshPush() {
+  const label = $('#pushState'), btn = $('#pushBtn');
+  const st = await Sync.pushState();
+  const text = { unsupported: 'Этот браузер не умеет уведомления. Установи приложение на главный экран.', denied: 'Уведомления запрещены в настройках браузера.', on: 'Включены на этом устройстве', off: 'Выключены на этом устройстве' };
+  label.textContent = text[st];
+  btn.hidden = st === 'unsupported' || st === 'denied';
+  btn.textContent = st === 'on' ? 'Выключить' : 'Включить';
+  btn.className = st === 'on' ? 'ghost' : 'primary';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      if (st === 'on') { await Sync.disablePush(); toast('Уведомления выключены'); }
+      else { await Sync.enablePush(); toast('Уведомления включены'); }
+    } catch (e) { toast(e.message || 'Не получилось'); }
+    btn.disabled = false;
+    refreshPush();
+  };
 }
 
 /* ---------- Меню ---------- */
