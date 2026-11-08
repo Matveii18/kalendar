@@ -74,8 +74,13 @@ folder = f"/untis/{school}/schueler"
 nav = get(f"{folder}/frames/navbar.htm")
 
 classes = re.search(r"var\s+classes\s*=\s*\[([^\]]*)\]", nav)
-names = [s.strip().strip('"') for s in classes.group(1).split(",")] if classes else []
+names = re.findall(r"""["']([^"']*)["']""", classes.group(1)) if classes else []
 if class_name not in names:
+    # Сведения для разбора: список классов не секретный, страницу целиком не печатаем
+    print(f"Страница навигации: {len(nav)} символов, классов найдено: {len(names)}", flush=True)
+    print("Первые классы:", ", ".join(names[:8]) or "—", flush=True)
+    print("Есть ли в странице 'classes':", "да" if "classes" in nav else "нет",
+          "| заголовок:", (re.search(r"<title>(.*?)</title>", nav, re.S | re.I) or [None, "—"])[1].strip()[:60], flush=True)
     raise SystemExit(f"Класс {class_name} не найден на сайте")
 page = f"c{names.index(class_name) + 1:05d}.htm"
 
