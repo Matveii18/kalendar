@@ -882,5 +882,9 @@ Sync.onStatus(st => {
   if (ui.view === 'data' && !$('#sheetWrap').classList.contains('open') && !document.activeElement.closest('#loginForm')) render();
 });
 
-render();
+// Запуск облака не должен зависеть от первого показа экрана
 Sync.init();
+try { render(); } catch (e) {
+  console.error(e);
+  view.innerHTML = `<div class="page"><p class="hint">Ошибка при показе экрана: ${esc(e && e.message)}</p></div>`;
+}

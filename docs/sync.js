@@ -17,6 +17,9 @@ const Sync = (() => {
   }
 
   let initInfo = '';
+  let stage = 'не начат';
+  const jsErrors = [];
+  window.addEventListener('error', ev => { jsErrors.push(`${ev.message || (ev.target && ev.target.src) || 'ошибка'}`.slice(0, 120)); });
 
   // Библиотека входа: сначала своя копия на сайте, если не загрузилась, пробуем внешние
   function loadScript(src) {
@@ -36,18 +39,22 @@ const Sync = (() => {
   }
 
   async function init() {
+    stage = 'запуск';
     try {
       if (!CONFIG.supabaseUrl) { initInfo = 'нет адреса облака в config.js'; }
-      else if (!(await ensureLib())) { initInfo = 'библиотека входа не загрузилась ни с сайта, ни с внешних серверов'; }
+      else if (stage = 'загрузка библиотеки', !(await ensureLib())) { initInfo = 'библиотека входа не загрузилась ни с сайта, ни с внешних серверов'; }
       else {
+        stage = 'создание клиента';
         sb = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
           auth: { persistSession: true, autoRefreshToken: true, storageKey: 'kalendar-auth' },
         });
       }
     } catch (e) { sb = null; initInfo = `ошибка запуска: ${e && e.message}`; }
     if (!sb) { setStatus('off', `Облако недоступно (${initInfo})`); return; }
+    stage = 'проверка сессии';
     const { data } = await sb.auth.getSession();
     await onSession(data.session);
+    stage = 'готово';
     sb.auth.onAuthStateChange((_ev, session) => {
       if ((session && session.user && session.user.id) !== (user && user.id)) onSession(session);
     });
@@ -140,7 +147,7 @@ const Sync = (() => {
     get status() { return status; },
     onStatus(fn) { listeners.push(fn); },
     async signIn(email, password) {
-      if (!sb) throw new Error(`Облако недоступно (${initInfo || 'ещё запускается, подожди и повтори'})`);
+      if (!sb) throw new Error(`Облако недоступно (${initInfo || 'ещё запускается'}; этап: ${stage}; библиотека: ${typeof window.supabase}${jsErrors.length ? '; ошибки: ' + jsErrors.slice(-3).join(' | ') : ''})`);
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
     },
