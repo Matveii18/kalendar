@@ -63,7 +63,13 @@ function buildSlots(lessons) {
       if (!byLesson.has(k)) byLesson.set(k, { subject: e.subject, room: e.room, teachers: [] });
       if (e.teacher && !byLesson.get(k).teachers.includes(e.teacher)) byLesson.get(k).teachers.push(e.teacher);
     }
-    s.options = [...byLesson.values()].map(o => ({ ...o, label: `${o.subject} ${o.teachers.join('/')} ${o.room}`.replace(/\s+/g, ' ').trim() }));
+    for (const e of s.entries) {
+      const o = byLesson.get(`${e.subject}|${e.room}`);
+      o.n = (o.n || 0) + 1;
+      if (e.cancelled) o.nCancelled = (o.nCancelled || 0) + 1;
+      if (e.changed) o.changed = true;
+    }
+    s.options = [...byLesson.values()].map(o => ({ ...o, cancelled: o.nCancelled === o.n, label: `${o.subject} ${o.teachers.join('/')} ${o.room}`.replace(/\s+/g, ' ').trim() }));
     s.sig = s.options.map(o => o.label).sort().join(' | ');
     s.pickKey = `${s.key}|${s.sig}`;
   }
@@ -102,21 +108,33 @@ function resolvePick(slot) {
   return null;
 }
 
+// Выбранный вариант; если отменены все варианты, показываем отмену, а не просьбу выбрать группу
+function effectivePick(slot) {
+  const pick = resolvePick(slot);
+  if (pick) return pick;
+  return slot.options.length && slot.options.every(o => o.cancelled) ? slot.options[0] : null;
+}
+
 function slotTime(slot) {
   const p0 = slot.periods[0], p1 = slot.periods[slot.periods.length - 1];
   return { start: (BELLS[p0] || ['00:00'])[0], end: (BELLS[p1] || BELLS[p0] || ['00:00', '00:00'])[1], label: p0 === p1 ? `${p0}` : `${p0}–${p1}` };
 }
 
-function autoLessons(week, ymd) {
+function autoLessons(week, ymd, withCancelled) {
   const wd = weekday(ymd);
   const out = [];
   for (const slot of buildSlots(week.lessons).filter(s => s.day === wd)) {
     const t = slotTime(slot);
-    const pick = resolvePick(slot);
+    const pick = effectivePick(slot);
     if (pick === '-') continue;
+    if (pick && pick.cancelled) {
+      // Отменённый урок моей группы не считается уроком дня
+      if (withCancelled) out.push({ key: `school:${week.id}:${slot.key}`, type: 'school', entry: { auto: true, slot, ymd }, ymd, start: t.start, end: t.end, periods: slot.periods, cancelled: true, title: `${t.label}. ${pick.subject}` });
+      continue;
+    }
     const base = { key: `school:${week.id}:${slot.key}`, type: 'school', entry: { auto: true, slot, ymd }, ymd, start: t.start, end: t.end, periods: slot.periods };
     if (pick) {
-      out.push({ ...base, title: `${t.label}. ${pick.subject}`, sub: [pick.teachers.join(', '), pick.room].filter(Boolean).join(' · ') });
+      out.push({ ...base, title: `${t.label}. ${pick.subject}`, sub: [pick.changed ? 'замена' : '', pick.teachers.join(', '), pick.room].filter(Boolean).join(' · ') });
     } else {
       out.push({ ...base, title: `${t.label}. Выбери свою группу`, sub: slot.options.map(o => `${o.subject} ${o.teachers.join('/')}`).join(' / '), needsPick: true });
     }
@@ -124,10 +142,10 @@ function autoLessons(week, ymd) {
   return out;
 }
 
-function schoolLessons(ymd) {
+function schoolLessons(ymd, withCancelled) {
   if (noSchoolOn(ymd)) return [];
   const week = schoolWeekFor(ymd);
-  if (week) return autoLessons(week, ymd);
+  if (week) return autoLessons(week, ymd, withCancelled);
   const wd = weekday(ymd);
   return Store.all('school')
     .filter(s => s.weekday === wd && BELLS[s.lesson])
@@ -142,14 +160,20 @@ function schoolLessons(ymd) {
 
 // Все уроки дня одним пунктом: «Школа» с временем от первого до последнего урока
 function schoolItem(ymd) {
-  const lessons = schoolLessons(ymd);
-  if (!lessons.length) return null;
+  const all = schoolLessons(ymd, true);
+  const lessons = all.filter(l => !l.cancelled);
+  const cancelled = all.filter(l => l.cancelled);
+  if (!lessons.length && !cancelled.length) return null;
+  if (!lessons.length) {
+    return { key: `school:${ymd}`, type: 'school', ymd, lessons, allDay: true, title: 'Школа', sub: 'все уроки отменены', cancelledList: cancelled.map(l => l.title) };
+  }
   return {
     key: `school:${ymd}`, type: 'school', ymd, lessons,
     start: lessons[0].start, end: lessons[lessons.length - 1].end,
     title: 'Школа',
     sub: lessons.map(l => l.title).join(', '),
     needsPick: lessons.some(l => l.needsPick),
+    cancelledList: cancelled.map(l => l.title),
   };
 }
 

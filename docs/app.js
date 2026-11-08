@@ -164,7 +164,7 @@ function itemRow(it) {
   return `<div class="${cls.join(' ')}" data-key="${esc(it.key)}">
     <span class="strip" style="background:${TYPES[it.type].color}"></span>
     ${check}
-    <div class="body"><div class="t">${esc(it.title)}</div>${it.sub ? `<div class="s">${esc(it.sub)}</div>` : ''}${warn}${late}</div>
+    <div class="body"><div class="t">${esc(it.title)}</div>${it.sub ? `<div class="s">${esc(it.sub)}</div>` : ''}${warn}${late}${cancelled}</div>
     ${time}
   </div>`;
 }
@@ -621,7 +621,7 @@ function renderSchool() {
   const head = `<div class="tt-cell tt-head"></div>` + [1, 2, 3, 4, 5].map(w => `<div class="tt-cell tt-head">${WD[w]}</div>`).join('');
   let rows = '';
   for (const l of lessons) {
-    rows += `<div class="tt-cell tt-num"><b>${l}</b><small>${BELLS[l][0]}</small></div>`;
+    rows += `<div class="tt-cell tt-num"><b>${l}</b><small>${BELLS[l][0]}<br>${BELLS[l][1]}</small></div>`;
     for (let w = 1; w <= 5; w++) {
       const s = Store.all('school').find(x => x.weekday === w && x.lesson === l);
       rows += `<button class="tt-cell tt-slot ${s ? 'filled' : ''}" data-w="${w}" data-l="${l}">
@@ -658,23 +658,31 @@ function autoWeekTable(w) {
   const slots = buildSlots(w.lessons);
   const days = [1, 2, 3, 4, 5].concat(slots.some(s => s.day === 6) ? [6] : []);
   const maxP = Math.max(8, ...slots.flatMap(s => s.periods));
+  // Перед уроками 3, 5, 7 и 9 перемена: между ними вставляем узкую пустую строку сетки
+  const breakBefore = new Set([3, 5, 7, 9]);
+  const gridRow = p => p + 1 + [...breakBefore].filter(b => b <= p).length;
+  const rowSizes = ['auto'];
+  for (let p = 1; p <= maxP; p++) { if (breakBefore.has(p)) rowSizes.push('16px'); rowSizes.push('minmax(48px, auto)'); }
   let cells = `<div class="tt-cell tt-head" style="grid-row:1"></div>` + days.map(d => `<div class="tt-cell tt-head" style="grid-row:1">${WD[d]} ${Number(addDays(w.monday, d - 1).slice(8))}</div>`).join('');
   for (let p = 1; p <= maxP; p++) {
-    cells += `<div class="tt-cell tt-num" style="grid-row:${p + 1}"><b>${p}</b><small>${(BELLS[p] || [''])[0]}</small></div>`;
+    cells += `<div class="tt-cell tt-num" style="grid-row:${gridRow(p)}"><b>${p}</b><small>${(BELLS[p] || ['', ''])[0]}<br>${(BELLS[p] || ['', ''])[1]}</small></div>`;
   }
   slots.forEach(s => {
     const col = days.indexOf(s.day) + 2;
     if (col < 2) return;
-    const pick = resolvePick(s);
+    const pick = effectivePick(s);
     const multi = s.options.length > 1;
     const body = pick === '-' ? `<span class="tt-t">нет урока</span>`
+      : pick && pick.cancelled ? `<span class="tt-subj">${esc(pick.subject)}</span><span class="tt-t">отменён</span>`
       : pick ? `<span class="tt-subj">${esc(pick.subject)}</span><span class="tt-t">${esc([pick.teachers.join('/'), pick.room].filter(Boolean).join(' · '))}</span>`
       : `<span class="tt-subj">выбрать</span><span class="tt-t">${esc(s.options.map(o => o.subject).join(' / '))}</span>`;
-    cells += `<button class="tt-cell tt-auto ${multi ? 'multi' : ''} ${multi && !pick ? 'todo' : ''}" style="grid-column:${col};grid-row:${s.periods[0] + 1} / span ${s.periods.length}"
+    const state = pick && pick !== '-' ? (pick.cancelled ? 'cancelled' : pick.changed ? 'changed' : '') : '';
+    const r0 = gridRow(s.periods[0]), r1 = gridRow(s.periods[s.periods.length - 1]);
+    cells += `<button class="tt-cell tt-auto ${multi ? 'multi' : ''} ${multi && !pick ? 'todo' : ''} ${state}" style="grid-column:${col};grid-row:${r0} / span ${r1 - r0 + 1}"
       ${multi ? `data-week="${w.id}" data-slot="${esc(s.key)}"` : ''}>${body}</button>`;
   });
   return `<h3 class="sub-h">Неделя с ${fmtShort(w.monday)}</h3>
-    <div class="tt" style="grid-template-columns:52px repeat(${days.length}, minmax(0, 1fr))">${cells}</div>`;
+    <div class="tt" style="grid-template-columns:52px repeat(${days.length}, minmax(0, 1fr));grid-template-rows:${rowSizes.join(' ')}">${cells}</div>`;
 }
 
 function openGroupPicker(slot) {
@@ -687,7 +695,7 @@ function openGroupPicker(slot) {
       <h3>${WD_LONG[slot.day]}, ${t.label} урок (${t.start}–${t.end})</h3></div>
     <p class="hint">Какой урок у тебя? Выбор запомнится и для следующих недель.</p>
     <div class="stack">
-      ${slot.options.map((o, i) => `<button class="${resolved && resolved !== '-' && resolved.label === o.label ? 'primary' : 'ghost'}" data-opt="${i}">${esc(o.subject)} · ${esc(o.teachers.join('/'))} · ${esc(o.room)}</button>`).join('')}
+      ${slot.options.map((o, i) => `<button class="${resolved && resolved !== '-' && resolved.label === o.label ? 'primary' : 'ghost'}" data-opt="${i}">${esc(o.subject)} · ${esc(o.teachers.join('/'))} · ${esc(o.room)}${o.cancelled ? ' (отменён)' : o.changed ? ' (замена)' : ''}</button>`).join('')}
       <button class="${resolved === '-' ? 'primary' : 'ghost'}" data-opt="-">У меня в это время нет урока</button>
       ${current ? `<button class="danger" data-opt="reset">Сбросить выбор</button>` : ''}
     </div>`, s => {

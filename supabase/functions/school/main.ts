@@ -17,7 +17,7 @@ declare const Untis: {
   untisStand(html: string): string | null;
 };
 
-type Entry = { subject: string; teacher: string; room: string; extra?: string };
+type Entry = { subject: string; teacher: string; room: string; extra?: string; cancelled?: boolean; changed?: boolean };
 type Lesson = { day: number; periods: number[]; entries: Entry[]; part: string | null };
 
 const APP_URL = 'https://matveii18.github.io/kalendar/';
@@ -65,7 +65,7 @@ function addDays(ymd: string, n: number) {
   return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(x.getUTCDate()).padStart(2, '0')}`;
 }
 
-const lessonKey = (l: Lesson) => `${l.periods.join(',')}:${l.entries.map(e => `${e.subject}/${e.teacher}/${e.room}`).join('|')}`;
+const lessonKey = (l: Lesson) => `${l.periods.join(',')}:${l.entries.map(e => `${e.subject}/${e.teacher}/${e.room}${e.cancelled ? '/отмена' : e.changed ? '/замена' : ''}`).join('|')}`;
 
 function dayKey(lessons: Lesson[], day: number) {
   return lessons.filter(l => l.day === day).map(lessonKey).sort().join(';');
@@ -130,7 +130,11 @@ async function save(userId: string, nav: string, pages: { week: string; html: st
       { user_id: userId, id, coll: 'schoolWeeks', data, deleted: false, updated_at: updatedAt },
       { onConflict: 'user_id,id' });
     if (error) throw error;
-    result.push({ monday: w.monday, lessons: lessons.length, changed: !!oldLessons && !same });
+    const flat = lessons.flatMap(l => l.entries);
+    result.push({
+      monday: w.monday, lessons: lessons.length, changed: !!oldLessons && !same,
+      cancelled: flat.filter(e => e.cancelled).length, replaced: flat.filter(e => e.changed).length,
+    });
   }
 
   if (changes.length) await notify(userId, 'Расписание изменилось', `Посмотри уроки: ${changes.join(', ')}`);

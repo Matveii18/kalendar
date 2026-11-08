@@ -228,6 +228,11 @@ input, select, textarea { font: inherit; color: var(--text); }
 .tt-cell { background: var(--cell); border-radius: 6px; min-height: 48px; padding: 4px; font-size: 12px; display: flex; flex-direction: column; justify-content: center; text-align: center; overflow: hidden; }
 .tt-head { min-height: 28px; background: none; color: var(--muted); font-weight: 600; }
 .tt-num small { color: var(--muted); font-size: 10px; }
+.tt-num small { line-height: 1.25; }
+.tt-auto.cancelled { background: #2a1517; }
+.tt-auto.cancelled .tt-subj { color: #ff7a7c; text-decoration: line-through; }
+.tt-auto.cancelled .tt-t { color: #ff7a7c; }
+.tt-auto.changed .tt-subj, .tt-auto.changed .tt-t { color: #ff7a7c; }
 .tt-slot.filled { background: #20232b; }
 .tt-subj { font-weight: 600; overflow-wrap: anywhere; }
 .tt-t { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }

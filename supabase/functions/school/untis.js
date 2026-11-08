@@ -63,13 +63,21 @@ function findGrid(html) {
   return html.slice(m.index);
 }
 
+// Untis помечает отмену зачёркиванием, а замену и перенос красным цветом
+const STRIKE_RE = /<\s*(strike|s|del)\b|line-through/i;
+const RED_RE = /(?:color|bgcolor)?\s*[=:]\s*["']?\s*(?:#ff0000|#f00|red)\b/i;
+
 function cellEntries(cellHtml) {
   const out = [];
   for (const r of tableRows(cellHtml)) {
     const parts = r.map(c => textOf(c.html)).filter(Boolean);
     if (!parts.length) continue;
     const [subject, teacher, room, ...rest] = parts;
-    out.push({ subject: subject || '', teacher: teacher || '', room: room || '', extra: rest.join(' ') });
+    const raw = r.map(c => `${c.attrs} ${c.html}`).join(' ');
+    const entry = { subject: subject || '', teacher: teacher || '', room: room || '', extra: rest.join(' ') };
+    if (STRIKE_RE.test(raw)) entry.cancelled = true;       // урок отменён
+    else if (RED_RE.test(raw)) entry.changed = true;       // замена или перенос
+    out.push(entry);
   }
   return out;
 }

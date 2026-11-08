@@ -103,4 +103,4 @@ if not result.get("ok"):
     raise SystemExit(f"Supabase не принял расписание: {result.get('error')}")
 
 for w in result.get("weeks", []):
-    print(f"Неделя с {w['monday']}: уроков {w['lessons']}{', есть изменения' if w['changed'] else ''}")
+    print(f"Неделя с {w['monday']}: уроков {w['lessons']}{', есть изменения' if w['changed'] else ''}, отменённых записей {w.get('cancelled', 0)}, замен {w.get('replaced', 0)}")
