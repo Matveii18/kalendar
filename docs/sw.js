@@ -1,6 +1,6 @@
 // Кэш, чтобы приложение открывалось и без интернета
-const CACHE = 'kalendar-v10';
-const FILES = ['./', 'index.html', 'styles.css', 'config.js', 'tz.js', 'store.js', 'sync.js', 'events.js', 'app.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'kalendar-v11';
+const FILES = ['./', 'index.html', 'styles.css', 'config.js', 'tz.js', 'store.js', 'sync.js', 'events.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'vendor/supabase.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
