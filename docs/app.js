@@ -161,6 +161,8 @@ function itemRow(it) {
     ? `<div class="warn">⚠ Накладка с уроками: ${it.conflicts.map(c => esc(c.title)).join(', ')}</div>` : '';
   const late = it.overdue ? `<div class="warn">Просрочено</div>`
     : it.needsPick ? `<div class="warn">Нажми, чтобы выбрать группу</div>` : '';
+  const cancelled = it.cancelledList && it.cancelledList.length
+    ? `<div class="warn">Отменено: ${it.cancelledList.map(esc).join(', ')}</div>` : '';
   return `<div class="${cls.join(' ')}" data-key="${esc(it.key)}">
     <span class="strip" style="background:${TYPES[it.type].color}"></span>
     ${check}
