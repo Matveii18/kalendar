@@ -70,14 +70,29 @@ function buildSlots(lessons) {
   return [...map.values()];
 }
 
-// Какой вариант выбран: сначала точное совпадение, потом выбор для того же дня и уроков на прошлых неделях
+// Уроки слота из ключа вида «день|1,2»
+function slotParts(key) {
+  const [day, per] = String(key || '').split('|');
+  return { day: +day, periods: (per || '').split(',').map(Number).filter(Boolean) };
+}
+
+// Какой вариант выбран: сначала точное совпадение, потом выбор в тот же день на пересекающихся уроках
+// (на другой неделе сдвоенные уроки могут быть склеены иначе: 7 и 8 по отдельности или 7–8 вместе)
 function resolvePick(slot) {
   if (slot.options.length === 1) return slot.options[0];
   const picks = Store.all('groupPicks');
   const exact = picks.find(p => p.key === slot.pickKey);
-  const same = exact ? [exact] : picks.filter(p => p.slot === slot.key).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const byTime = picks
+    .filter(p => p !== exact)
+    .filter(p => {
+      if (p.slot === slot.key) return true;
+      const q = slotParts(p.slot);
+      return q.day === slot.day && q.periods.some(x => slot.periods.includes(x));
+    })
+    .sort((a, b) => ((b.slot === slot.key) - (a.slot === slot.key)) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
+  const same = exact ? [exact, ...byTime] : byTime;
   for (const p of same) {
-    if (p.choice === '-') return '-';
+    if (p.choice === '-') { if (exact === p || p.slot === slot.key) return '-'; continue; }
     // Учитель мог смениться (замена): тогда узнаём свой урок по предмету и кабинету, потом просто по предмету
     const opt = slot.options.find(o => o.label === p.choice)
       || slot.options.find(o => o.subject === p.subject && o.room === p.room)
