@@ -176,110 +176,61 @@ function untisStand(navHtml) {
 
 globalThis.Untis = { parseUntisClass, parseUntisWeeks, untisClassIndex, untisStand, textOf };
 
-// Проверка расписания на сайте колледжа (OSP Köln, экспорт Untis).
-// pg_cron вызывает функцию каждые 5 минут, а она сама решает по немецкому времени, пора ли проверять
-// (график из ТЗ). Уроки текущей и следующей недели записываются в таблицу items как записи
-// коллекции schoolWeeks, поэтому приложение получает их обычной синхронизацией.
-// Логин и пароль берутся только из секретов Supabase: COLLEGE_USER, COLLEGE_PASSWORD, COLLEGE_SCHOOL.
+// Расписание колледжа (OSP Köln, экспорт Untis): разбор, сохранение и уведомление об изменениях.
+// Сайт колледжа не пускает серверы Supabase, поэтому заходит на него GitHub Actions
+// (.github/workflows/school.yml + scripts/school_fetch.py) и присылает сюда скачанные страницы.
+//
+//   GET  ?due   — пора ли проверять по графику из ТЗ (по времени последней проверки)
+//   POST        — { nav, pages: [{ week, html }] }: разобрать, сохранить, сообщить об изменениях
+// Оба запроса требуют заголовок x-school-token, равный секрету SCHOOL_PUSH_TOKEN.
+// Уроки текущей и следующей недели записываются в items как коллекция schoolWeeks,
+// поэтому приложение получает их обычной синхронизацией.
 
 
 declare const Untis: {
   parseUntisClass(html: string): Lesson[];
   parseUntisWeeks(html: string): { week: string; monday: string }[];
-  untisClassIndex(html: string, name: string): number;
   untisStand(html: string): string | null;
 };
 
 type Entry = { subject: string; teacher: string; room: string; extra?: string };
 type Lesson = { day: number; periods: number[]; entries: Entry[]; part: string | null };
 
-const BASE = 'https://osp2.stadt-koeln.de';
-const CLASS_NAME = Deno.env.get('COLLEGE_CLASS') || '2659';
 const APP_URL = 'https://matveii18.github.io/kalendar/';
 const VAPID_PUBLIC = 'BGAS-MTzjvhDHpM9rt7jXBSVvsdqPkUheiZEAASNQMJu3yRose75B7OKh3owVGE0jAaNJJD9rEiSF5t4X3fD01Y';
 const WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const SLACK_MIN = 2; // запуски GitHub по расписанию приходят с опозданием, даём запас
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 webpush.setVapidDetails(APP_URL, VAPID_PUBLIC, Deno.env.get('VAPID_PRIVATE_KEY')!);
 
 /* ---- Когда проверять (время по Германии) ---- */
 
-function berlinNow() {
+const berlinFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Berlin', hourCycle: 'h23', weekday: 'short',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit',
+});
+
+function berlin(t: number) {
   const p: Record<string, string> = {};
-  const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', hourCycle: 'h23', weekday: 'short', hour: '2-digit', minute: '2-digit' });
-  for (const x of f.formatToParts(new Date())) p[x.type] = x.value;
-  return { weekend: p.weekday === 'Sat' || p.weekday === 'Sun', h: +p.hour % 24, m: +p.minute };
+  for (const x of berlinFmt.formatToParts(new Date(t))) p[x.type] = x.value;
+  return { weekend: p.weekday === 'Sat' || p.weekday === 'Sun', h: +p.hour % 24, ymd: `${p.year}-${p.month}-${p.day}` };
 }
 
-// Вызов идёт каждые 5 минут: в каждом окне графика срабатывает ровно один из них
-function isDue() {
-  const { weekend, h, m } = berlinNow();
-  if (weekend) return h === 19 && m < 5;
-  if (h < 6) return m < 5;            // раз в час
-  if (h < 9) return true;             // каждые 5 минут
-  if (h < 15) return m % 15 < 5;      // каждые 15 минут
-  return m % 30 < 5;                  // каждые 30 минут
-}
+function berlinYmd(t: number) { return berlin(t).ymd; }
 
-/* ---- Сайт колледжа ---- */
-
-class Session {
-  cookies = new Map<string, string>();
-
-  private store(res: Response) {
-    // Deno отдаёт все Set-Cookie через getSetCookie
-    for (const c of res.headers.getSetCookie()) {
-      const [pair] = c.split(';');
-      const i = pair.indexOf('=');
-      if (i > 0) this.cookies.set(pair.slice(0, i).trim(), pair.slice(i + 1).trim());
-    }
+// График из ТЗ: будни 00–06 раз в час, 06–09 каждые 5 мин, 09–15 каждые 15, 15–24 каждые 30;
+// выходные один раз в 19:00
+function isDue(lastCheck: number) {
+  const now = Date.now();
+  const cur = berlin(now);
+  if (cur.weekend) {
+    if (cur.h < 19) return false;
+    const last = berlin(lastCheck);
+    return !(lastCheck && last.ymd === cur.ymd && last.h >= 19);
   }
-
-  async fetch(path: string, init: RequestInit = {}, hops = 0): Promise<Response> {
-    const headers = new Headers(init.headers);
-    headers.set('Cookie', [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '));
-    headers.set('User-Agent', 'Mozilla/5.0 (Kalendar schedule check)');
-    const res = await fetch(new URL(path, BASE), { ...init, headers, redirect: 'manual' });
-    this.store(res);
-    const loc = res.headers.get('location');
-    if (res.status >= 300 && res.status < 400 && loc && hops < 5) {
-      await res.body?.cancel();
-      return this.fetch(new URL(loc, new URL(path, BASE)).href, {}, hops + 1);
-    }
-    return res;
-  }
-
-  async text(path: string) {
-    const res = await this.fetch(path);
-    const buf = await res.arrayBuffer();
-    if (res.url.includes('login.php') || !res.ok) throw new Error(`Нет доступа к ${path} (${res.status})`);
-    return new TextDecoder('windows-1252').decode(buf);
-  }
-}
-
-async function loadSchedule() {
-  const user = Deno.env.get('COLLEGE_USER'), pass = Deno.env.get('COLLEGE_PASSWORD');
-  const school = Deno.env.get('COLLEGE_SCHOOL') || '175031';
-  if (!user || !pass) throw new Error('Не заданы секреты COLLEGE_USER и COLLEGE_PASSWORD');
-
-  const s = new Session();
-  await s.fetch('/login.php');
-  const body = new URLSearchParams({ schulnummer: school, benutzername: user, passwort: pass });
-  await s.fetch('/process.php', { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-  await s.text('/schueler.php'); // кнопка Schülerplan
-
-  const dir = `/untis/${school}/schueler`;
-  const nav = await s.text(`${dir}/frames/navbar.htm`);
-  const idx = Untis.untisClassIndex(nav, CLASS_NAME);
-  if (idx < 1) throw new Error(`Класс ${CLASS_NAME} не найден на сайте`);
-  const file = `c${String(idx).padStart(5, '0')}.htm`;
-
-  const weeks = [];
-  for (const w of Untis.parseUntisWeeks(nav)) {
-    const html = await s.text(`${dir}/${w.week}/c/${file}`);
-    weeks.push({ ...w, lessons: Untis.parseUntisClass(html) });
-  }
-  return { weeks, stand: Untis.untisStand(nav) };
+  const every = cur.h < 6 ? 60 : cur.h < 9 ? 5 : cur.h < 15 ? 15 : 30;
+  return now - lastCheck >= (every - SLACK_MIN) * 60000;
 }
 
 /* ---- Сохранение и сравнение ---- */
@@ -296,7 +247,7 @@ function dayKey(lessons: Lesson[], day: number) {
   return lessons.filter(l => l.day === day).map(lessonKey).sort().join(';');
 }
 
-// Какие будущие дни изменились: ['Чт 12.11', ...]
+// Какие ещё не прошедшие дни изменились: ['Чт 12.11', ...]
 function changedDays(oldL: Lesson[], newL: Lesson[], monday: string, today: string) {
   const out: string[] = [];
   for (let d = 1; d <= 6; d++) {
@@ -313,6 +264,11 @@ async function ownerId() {
   return data.users[0].id;
 }
 
+async function lastCheck(userId: string) {
+  const { data } = await sb.from('items').select('data').eq('user_id', userId).eq('coll', 'schoolWeeks');
+  return Math.max(0, ...(data || []).map(r => r.data?.checkedAt || 0));
+}
+
 async function notify(userId: string, title: string, body: string) {
   const { data: subs } = await sb.from('push_subs').select('endpoint,sub').eq('user_id', userId);
   for (const s of subs || []) {
@@ -326,39 +282,50 @@ async function notify(userId: string, title: string, body: string) {
   }
 }
 
-async function run() {
-  const userId = await ownerId();
-  const { weeks, stand } = await loadSchedule();
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
-
+async function save(userId: string, nav: string, pages: { week: string; html: string }[]) {
+  const weeks = Untis.parseUntisWeeks(nav);
+  const stand = Untis.untisStand(nav);
+  const today = berlinYmd(Date.now());
   const changes: string[] = [];
-  for (const w of weeks) {
+  const result = [];
+
+  for (const p of pages) {
+    const w = weeks.find(x => x.week === String(p.week));
+    if (!w) continue;
+    const lessons = Untis.parseUntisClass(p.html);
     const id = `schoolweek-${w.monday}`;
     const { data: prev } = await sb.from('items').select('data').eq('user_id', userId).eq('id', id).maybeSingle();
     const oldLessons: Lesson[] | null = prev?.data?.lessons ?? null;
-    const same = oldLessons && JSON.stringify(oldLessons.map(lessonKey)) === JSON.stringify(w.lessons.map(lessonKey));
-    if (oldLessons && !same) changes.push(...changedDays(oldLessons, w.lessons, w.monday, today));
+    const same = !!oldLessons && JSON.stringify(oldLessons.map(lessonKey)) === JSON.stringify(lessons.map(lessonKey));
+    if (oldLessons && !same) changes.push(...changedDays(oldLessons, lessons, w.monday, today));
 
-    const data = { id, monday: w.monday, week: w.week, lessons: w.lessons, stand, checkedAt: Date.now(), updatedAt: Date.now() };
-    // Если ничего не поменялось, обновляем только время проверки — без лишней синхронизации
-    if (same) data.updatedAt = prev!.data.updatedAt ?? Date.now();
+    const now = Date.now();
+    const updatedAt = same ? (prev!.data.updatedAt ?? now) : now;
+    const data = { id, monday: w.monday, week: w.week, lessons, stand, checkedAt: now, updatedAt };
     const { error } = await sb.from('items').upsert(
-      { user_id: userId, id, coll: 'schoolWeeks', data, deleted: false, updated_at: data.updatedAt },
+      { user_id: userId, id, coll: 'schoolWeeks', data, deleted: false, updated_at: updatedAt },
       { onConflict: 'user_id,id' });
     if (error) throw error;
+    result.push({ monday: w.monday, lessons: lessons.length, changed: !!oldLessons && !same });
   }
 
-  if (changes.length) {
-    await notify(userId, 'Расписание изменилось', `Посмотри уроки: ${changes.join(', ')}`);
-  }
-  return { weeks: weeks.map(w => ({ monday: w.monday, lessons: w.lessons.length })), stand, changes };
+  if (changes.length) await notify(userId, 'Расписание изменилось', `Посмотри уроки: ${changes.join(', ')}`);
+  return { weeks: result, stand, changes };
 }
 
 Deno.serve(async req => {
-  const force = new URL(req.url).searchParams.has('force');
-  if (!force && !isDue()) return Response.json({ ok: true, skipped: true });
+  const token = Deno.env.get('SCHOOL_PUSH_TOKEN');
+  if (!token || req.headers.get('x-school-token') !== token) {
+    return Response.json({ ok: false, error: 'forbidden' }, { status: 403 });
+  }
   try {
-    return Response.json({ ok: true, ...(await run()) });
+    const userId = await ownerId();
+    if (req.method === 'GET') {
+      return Response.json({ ok: true, due: isDue(await lastCheck(userId)) });
+    }
+    const body = await req.json();
+    if (!body?.nav || !Array.isArray(body.pages)) return Response.json({ ok: false, error: 'bad request' }, { status: 400 });
+    return Response.json({ ok: true, ...(await save(userId, body.nav, body.pages)) });
   } catch (e) {
     console.error(e);
     return Response.json({ ok: false, error: String((e as Error).message || e) }, { status: 500 });
