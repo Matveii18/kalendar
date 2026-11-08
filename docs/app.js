@@ -792,7 +792,10 @@ function renderData() {
     const v = formValues(lf);
     $('#loginErr').textContent = '';
     try { await Sync.signIn(v.email, lf.password.value); toast('Вход выполнен'); }
-    catch (e) { $('#loginErr').textContent = 'Не получилось войти: проверь почту и пароль'; }
+    catch (e) {
+      const why = [e && e.status, e && (e.code || e.name), e && e.message].filter(Boolean).join(' · ');
+      $('#loginErr').textContent = `Не получилось войти. Ответ сервера: ${why || 'нет ответа'}`;
+    }
   });
   if ($('#syncNow')) $('#syncNow').addEventListener('click', () => Sync.now());
   if ($('#pushBtn')) refreshPush();
