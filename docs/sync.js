@@ -16,11 +16,36 @@ const Sync = (() => {
     for (const fn of listeners) fn(status);
   }
 
-  async function init() {
-    if (!window.supabase || !CONFIG.supabaseUrl) { setStatus('off', 'Облако недоступно (нет интернета?)'); return; }
-    sb = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
-      auth: { persistSession: true, autoRefreshToken: true, storageKey: 'kalendar-auth' },
+  let initInfo = '';
+
+  // Библиотека входа: сначала своя копия на сайте, если не загрузилась, пробуем внешние
+  function loadScript(src) {
+    return new Promise(res => {
+      const el = document.createElement('script');
+      el.src = src; el.onload = () => res(true); el.onerror = () => res(false);
+      document.head.appendChild(el);
     });
+  }
+
+  async function ensureLib() {
+    if (window.supabase) return true;
+    for (const src of ['vendor/supabase.js?v=2', 'https://unpkg.com/@supabase/supabase-js@2.49.4/dist/umd/supabase.js', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js']) {
+      if (await loadScript(src) && window.supabase) return true;
+    }
+    return false;
+  }
+
+  async function init() {
+    try {
+      if (!CONFIG.supabaseUrl) { initInfo = 'нет адреса облака в config.js'; }
+      else if (!(await ensureLib())) { initInfo = 'библиотека входа не загрузилась ни с сайта, ни с внешних серверов'; }
+      else {
+        sb = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
+          auth: { persistSession: true, autoRefreshToken: true, storageKey: 'kalendar-auth' },
+        });
+      }
+    } catch (e) { sb = null; initInfo = `ошибка запуска: ${e && e.message}`; }
+    if (!sb) { setStatus('off', `Облако недоступно (${initInfo})`); return; }
     const { data } = await sb.auth.getSession();
     await onSession(data.session);
     sb.auth.onAuthStateChange((_ev, session) => {
@@ -115,7 +140,7 @@ const Sync = (() => {
     get status() { return status; },
     onStatus(fn) { listeners.push(fn); },
     async signIn(email, password) {
-      if (!sb) throw new Error('Облако недоступно');
+      if (!sb) throw new Error(`Облако недоступно (${initInfo || 'ещё запускается, подожди и повтори'})`);
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
     },
