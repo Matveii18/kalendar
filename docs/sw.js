@@ -1,9 +1,9 @@
 // Кэш, чтобы приложение открывалось и без интернета
-const CACHE = 'kalendar-v11';
+const CACHE = 'kalendar-v12';
 const FILES = ['./', 'index.html', 'styles.css', 'config.js', 'tz.js', 'store.js', 'sync.js', 'events.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'vendor/supabase.js'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -38,7 +38,7 @@ self.addEventListener('fetch', e => {
   // Запросы к облаку не кэшируем
   if (new URL(e.request.url).hostname.endsWith('supabase.co')) return;
   e.respondWith(
-    fetch(e.request).then(r => {
+    fetch(e.request, { cache: 'no-cache' }).then(r => {
       const copy = r.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy));
       return r;
