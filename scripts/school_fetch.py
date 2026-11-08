@@ -47,10 +47,16 @@ opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 opener.addheaders = [("User-Agent", "Mozilla/5.0 (Kalendar schedule check)")]
 
 
-def get(path):
-    with opener.open(BASE + path, timeout=30) as r:
-        if "login.php" in r.geturl():
+def get(path, referer=None):
+    # Страницы расписания сайт отдаёт только внутри рамки, то есть с адресом страницы-родителя
+    # в заголовке Referer; без него перекидывает на страницу с кнопкой Schülerplan
+    req = urllib.request.Request(BASE + path, headers={"Referer": BASE + referer} if referer else {})
+    with opener.open(req, timeout=30) as r:
+        final = r.geturl()
+        if "login.php" in final:
             raise SystemExit(f"Сайт колледжа не пустил на {path}: проверь логин и пароль в секретах GitHub")
+        if path.startswith("/untis/") and "/untis/" not in final:
+            raise SystemExit(f"Сайт колледжа не отдал страницу расписания {path.rsplit('/', 1)[-1]}, а перекинул на {urllib.parse.urlparse(final).path}")
         return r.read().decode("cp1252")
 
 
@@ -68,10 +74,12 @@ if "login.php" in after_login:
     print("Номер школы в секретах:", "задан" if os.environ.get("COLLEGE_SCHOOL") else "не задан, взят 175031",
           f"(цифр: {sum(c.isdigit() for c in school)})", flush=True)
     raise SystemExit("Сайт колледжа не принял логин и пароль из секретов GitHub")
-get("/schueler.php")  # кнопка Schülerplan
+get("/schueler.php", referer="/intern.php")  # кнопка Schülerplan
 
 folder = f"/untis/{school}/schueler"
-nav = get(f"{folder}/frames/navbar.htm")
+frameset = f"{folder}/default.htm"
+get(frameset, referer="/schueler.php")
+nav = get(f"{folder}/frames/navbar.htm", referer=frameset)
 
 classes = re.search(r"var\s+classes\s*=\s*\[([^\]]*)\]", nav)
 names = re.findall(r"""["']([^"']*)["']""", classes.group(1)) if classes else []
@@ -89,7 +97,7 @@ weeks = re.findall(r'<option[^>]*value\s*=\s*"?(\d+)"?', week_select.group(1), r
 if not weeks:
     raise SystemExit("На сайте не нашлось ни одной недели")
 
-pages = [{"week": w, "html": get(f"{folder}/{w}/c/{page}")} for w in weeks]
+pages = [{"week": w, "html": get(f"{folder}/{w}/c/{page}", referer=frameset)} for w in weeks]
 result = call_func("POST", {"nav": nav, "pages": pages})
 if not result.get("ok"):
     raise SystemExit(f"Supabase не принял расписание: {result.get('error')}")
