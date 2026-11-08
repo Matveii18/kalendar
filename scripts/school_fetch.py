@@ -62,10 +62,11 @@ with opener.open(BASE + "/process.php", data=form, timeout=30) as r:
 if "login.php" in after_login:
     # Сайт возвращает на вход с флагами ошибок в адресе (там же и пароль, поэтому адрес не печатаем)
     q = urllib.parse.parse_qs(urllib.parse.urlparse(after_login).query)
-    flags = {k: q.get(k, [""])[0] for k in ("abfr_bn", "abfr0", "abf1", "abf2", "rolle")}
-    print("Вход не удался, ответ сайта:", ", ".join(f"{k}={v}" for k, v in flags.items() if v) or "без пояснений")
+    hidden = {"pw", "hash", "hash2", "benutzername", "passwort"}
+    flags = {k: v[0] for k, v in q.items() if k not in hidden}
+    print("Вход не удался, ответ сайта:", ", ".join(f"{k}={v}" for k, v in flags.items()) or "без пояснений", flush=True)
     print("Номер школы в секретах:", "задан" if os.environ.get("COLLEGE_SCHOOL") else "не задан, взят 175031",
-          f"(цифр: {sum(c.isdigit() for c in school)})")
+          f"(цифр: {sum(c.isdigit() for c in school)})", flush=True)
     raise SystemExit("Сайт колледжа не принял логин и пароль из секретов GitHub")
 get("/schueler.php")  # кнопка Schülerplan
 
