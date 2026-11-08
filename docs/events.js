@@ -9,7 +9,7 @@ const TYPES = {
   school: { label: 'Школа',       color: '#8b95a7' },
   tutor:  { label: 'Репетитор',   color: '#a78bfa' },
   other:  { label: 'Другое',      color: '#f472b6' },
-  sub:    { label: 'Подписка',    color: '#ff9f43' },
+  sub:    { label: 'Подписка',    color: '#b5835a' },
 };
 
 // Порядок записей в дне: сначала по типу, выполненные задачи и ДЗ — в самый низ
