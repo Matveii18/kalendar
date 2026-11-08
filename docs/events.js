@@ -41,14 +41,84 @@ function noSchoolOn(ymd) {
   return Store.all('entries').some(e => e.type === 'period' && e.noSchool && e.start <= ymd && ymd <= e.end);
 }
 
+/* ---- Уроки с сайта колледжа ---- */
+
+function schoolWeekFor(ymd) {
+  return Store.all('schoolWeeks').find(w => w.monday <= ymd && ymd < addDays(w.monday, 7));
+}
+
+// Клетки расписания одного времени объединяем в «слот» с вариантами.
+// Одинаковый предмет и кабинет с разными учителями — это один урок с двумя учителями, а не группы.
+function buildSlots(lessons) {
+  const map = new Map();
+  for (const l of lessons) {
+    const key = `${l.day}|${l.periods.join(',')}`;
+    if (!map.has(key)) map.set(key, { key, day: l.day, periods: l.periods, entries: [] });
+    map.get(key).entries.push(...l.entries);
+  }
+  for (const s of map.values()) {
+    const byLesson = new Map();
+    for (const e of s.entries) {
+      const k = `${e.subject}|${e.room}`;
+      if (!byLesson.has(k)) byLesson.set(k, { subject: e.subject, room: e.room, teachers: [] });
+      if (e.teacher && !byLesson.get(k).teachers.includes(e.teacher)) byLesson.get(k).teachers.push(e.teacher);
+    }
+    s.options = [...byLesson.values()].map(o => ({ ...o, label: `${o.subject} ${o.teachers.join('/')} ${o.room}`.replace(/\s+/g, ' ').trim() }));
+    s.sig = s.options.map(o => o.label).sort().join(' | ');
+    s.pickKey = `${s.key}|${s.sig}`;
+  }
+  return [...map.values()];
+}
+
+// Какой вариант выбран: сначала точное совпадение, потом выбор для того же дня и уроков на прошлых неделях
+function resolvePick(slot) {
+  if (slot.options.length === 1) return slot.options[0];
+  const picks = Store.all('groupPicks');
+  const exact = picks.find(p => p.key === slot.pickKey);
+  const same = exact ? [exact] : picks.filter(p => p.slot === slot.key).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  for (const p of same) {
+    if (p.choice === '-') return '-';
+    // Учитель мог смениться (замена): тогда узнаём свой урок по предмету и кабинету, потом просто по предмету
+    const opt = slot.options.find(o => o.label === p.choice)
+      || slot.options.find(o => o.subject === p.subject && o.room === p.room)
+      || slot.options.find(o => o.subject === p.subject);
+    if (opt) return opt;
+  }
+  return null;
+}
+
+function slotTime(slot) {
+  const p0 = slot.periods[0], p1 = slot.periods[slot.periods.length - 1];
+  return { start: (BELLS[p0] || ['00:00'])[0], end: (BELLS[p1] || BELLS[p0] || ['00:00', '00:00'])[1], label: p0 === p1 ? `${p0}` : `${p0}–${p1}` };
+}
+
+function autoLessons(week, ymd) {
+  const wd = weekday(ymd);
+  const out = [];
+  for (const slot of buildSlots(week.lessons).filter(s => s.day === wd)) {
+    const t = slotTime(slot);
+    const pick = resolvePick(slot);
+    if (pick === '-') continue;
+    const base = { key: `school:${week.id}:${slot.key}`, type: 'school', entry: { auto: true, slot, ymd }, ymd, start: t.start, end: t.end, periods: slot.periods };
+    if (pick) {
+      out.push({ ...base, title: `${t.label}. ${pick.subject}`, sub: [pick.teachers.join(', '), pick.room].filter(Boolean).join(' · ') });
+    } else {
+      out.push({ ...base, title: `${t.label}. Выбери свою группу`, sub: slot.options.map(o => `${o.subject} ${o.teachers.join('/')}`).join(' / '), needsPick: true });
+    }
+  }
+  return out;
+}
+
 function schoolLessons(ymd) {
   if (noSchoolOn(ymd)) return [];
+  const week = schoolWeekFor(ymd);
+  if (week) return autoLessons(week, ymd);
   const wd = weekday(ymd);
   return Store.all('school')
     .filter(s => s.weekday === wd && BELLS[s.lesson])
     .sort((a, b) => a.lesson - b.lesson)
     .map(s => ({
-      key: `school:${s.id}:${ymd}`, type: 'school', entry: s, ymd,
+      key: `school:${s.id}:${ymd}`, type: 'school', entry: s, ymd, periods: [s.lesson],
       start: BELLS[s.lesson][0], end: BELLS[s.lesson][1],
       title: `${s.lesson}. ${Store.name('subjects', s.subjectId) || 'Урок'}`,
       sub: [teacherNames(s.teacherIds), s.room].filter(Boolean).join(' · '),
@@ -64,6 +134,7 @@ function schoolItem(ymd) {
     start: lessons[0].start, end: lessons[lessons.length - 1].end,
     title: 'Школа',
     sub: lessons.map(l => l.title).join(', '),
+    needsPick: lessons.some(l => l.needsPick),
   };
 }
 

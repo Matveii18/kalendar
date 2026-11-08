@@ -224,6 +224,12 @@ input, select, textarea { font: inherit; color: var(--text); }
 .tt-slot.filled { background: #20232b; }
 .tt-subj { font-weight: 600; overflow-wrap: anywhere; }
 .tt-t { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.tt-auto { background: #20232b; cursor: default; }
+.tt-auto.multi { cursor: pointer; border: 1.5px solid #4a4f5c; }
+.tt-auto.multi.todo { border-color: #ffb347; }
+.tt-auto.multi.todo .tt-subj { color: #ffb347; }
+.manual { margin-top: 26px; }
+.manual summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 
 /* ---- Уведомление внизу ---- */
 .toast {

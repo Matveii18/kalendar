@@ -4,7 +4,7 @@
 const Store = (() => {
   const KEY = 'kalendar-v1';
   const PENDING_KEY = 'kalendar-pending';
-  const COLLECTIONS = ['entries', 'subjects', 'teachers', 'tutors', 'subs', 'school'];
+  const COLLECTIONS = ['entries', 'subjects', 'teachers', 'tutors', 'subs', 'school', 'schoolWeeks', 'groupPicks'];
 
   let data = load();
   // Изменения, ещё не отправленные в облако: id -> { coll, data | null, updatedAt }

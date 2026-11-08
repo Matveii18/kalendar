@@ -107,7 +107,7 @@ function cellBars(items) {
     const cls = ['bar'];
     if (it.period) { cls.push('period'); if (it.isStart) cls.push('ps'); if (it.isEnd) cls.push('pe'); }
     if (it.done) cls.push('done');
-    if (it.overdue) cls.push('late');
+    if (it.overdue || it.needsPick) cls.push('late');
     bars.push(`<span class="${cls.join(' ')}" style="--c:${TYPES[it.type].color}">${esc(it.start ? `${it.start} ${it.title}` : it.title)}</span>`);
   }
   const max = 3;
@@ -159,7 +159,8 @@ function itemRow(it) {
     : `<div class="time"><b>${it.start}${it.end ? `<span class="to">–${it.end}</span>` : ''}</b>${it.alt ? `<small>${esc(it.alt)}</small>` : ''}</div>`;
   const warn = it.conflicts && it.conflicts.length
     ? `<div class="warn">⚠ Накладка с уроками: ${it.conflicts.map(c => esc(c.title)).join(', ')}</div>` : '';
-  const late = it.overdue ? `<div class="warn">Просрочено</div>` : '';
+  const late = it.overdue ? `<div class="warn">Просрочено</div>`
+    : it.needsPick ? `<div class="warn">Нажми, чтобы выбрать группу</div>` : '';
   return `<div class="${cls.join(' ')}" data-key="${esc(it.key)}">
     <span class="strip" style="background:${TYPES[it.type].color}"></span>
     ${check}
@@ -628,12 +629,81 @@ function renderSchool() {
       </button>`;
     }
   }
+  const today = todayYmd();
+  const weeks = [...Store.all('schoolWeeks')].filter(w => addDays(w.monday, 6) >= today).sort((a, b) => a.monday.localeCompare(b.monday));
+  const auto = weeks.map(autoWeekTable).join('');
+  const fmtTime = t => { const x = instantIn(TZ.DE, new Date(t)); return `${fmtShort(x.ymd)} ${x.hm}`; };
+  const status = weeks.length
+    ? `<p class="hint">Уроки приходят с сайта колледжа сами. Последняя проверка: ${fmtTime(Math.max(...weeks.map(w => w.checkedAt || 0)))}${weeks[0].stand ? `, на сайте обновлено ${esc(weeks[0].stand)}` : ''}. Клетки с жёлтой рамкой — уроки по группам: нажми и выбери свою.</p>`
+    : `<p class="hint">С сайта колледжа пока ничего не пришло. Пока можно заполнить расписание вручную, уроки появятся в календаре каждую неделю по расписанию звонков.</p>`;
+
   view.innerHTML = `
     <div class="page">
-      <p class="hint">Уроки отсюда сами появляются в календаре каждую неделю по расписанию звонков. Позже расписание будет подтягиваться с сайта колледжа автоматически, а пока его можно заполнить вручную.</p>
+      ${status}
+      ${auto}
+      ${weeks.length ? `<details class="manual"><summary>Ручное расписание (на случай, если сайт недоступен)</summary>` : ''}
       <div class="tt">${head}${rows}</div>
+      ${weeks.length ? `</details>` : ''}
     </div>`;
   view.querySelectorAll('.tt-slot').forEach(b => b.addEventListener('click', () => openSchoolCell(+b.dataset.w, +b.dataset.l)));
+  view.querySelectorAll('.tt-auto[data-slot]').forEach(b => b.addEventListener('click', () => {
+    const w = Store.get('schoolWeeks', b.dataset.week);
+    const slot = w && buildSlots(w.lessons).find(s => s.key === b.dataset.slot);
+    if (slot) openGroupPicker(slot);
+  }));
+}
+
+// Таблица недели с сайта: дни по колонкам, уроки по строкам; сдвоенные уроки занимают две строки
+function autoWeekTable(w) {
+  const slots = buildSlots(w.lessons);
+  const days = [1, 2, 3, 4, 5].concat(slots.some(s => s.day === 6) ? [6] : []);
+  const maxP = Math.max(8, ...slots.flatMap(s => s.periods));
+  let cells = `<div class="tt-cell tt-head" style="grid-row:1"></div>` + days.map(d => `<div class="tt-cell tt-head" style="grid-row:1">${WD[d]} ${Number(addDays(w.monday, d - 1).slice(8))}</div>`).join('');
+  for (let p = 1; p <= maxP; p++) {
+    cells += `<div class="tt-cell tt-num" style="grid-row:${p + 1}"><b>${p}</b><small>${(BELLS[p] || [''])[0]}</small></div>`;
+  }
+  slots.forEach(s => {
+    const col = days.indexOf(s.day) + 2;
+    if (col < 2) return;
+    const pick = resolvePick(s);
+    const multi = s.options.length > 1;
+    const body = pick === '-' ? `<span class="tt-t">нет урока</span>`
+      : pick ? `<span class="tt-subj">${esc(pick.subject)}</span><span class="tt-t">${esc([pick.teachers.join('/'), pick.room].filter(Boolean).join(' · '))}</span>`
+      : `<span class="tt-subj">выбрать</span><span class="tt-t">${esc(s.options.map(o => o.subject).join(' / '))}</span>`;
+    cells += `<button class="tt-cell tt-auto ${multi ? 'multi' : ''} ${multi && !pick ? 'todo' : ''}" style="grid-column:${col};grid-row:${s.periods[0] + 1} / span ${s.periods.length}"
+      ${multi ? `data-week="${w.id}" data-slot="${esc(s.key)}"` : ''}>${body}</button>`;
+  });
+  return `<h3 class="sub-h">Неделя с ${fmtShort(w.monday)}</h3>
+    <div class="tt" style="grid-template-columns:52px repeat(${days.length}, minmax(0, 1fr))">${cells}</div>`;
+}
+
+function openGroupPicker(slot) {
+  const t = slotTime(slot);
+  const current = Store.all('groupPicks').find(p => p.key === slot.pickKey);
+  const resolved = resolvePick(slot);
+  if (slot.options.length < 2) { toast('В это время урок без групп'); return; }
+  openSheet(`
+    <div class="sheet-head"><span class="dot" style="background:${TYPES.school.color}"></span>
+      <h3>${WD_LONG[slot.day]}, ${t.label} урок (${t.start}–${t.end})</h3></div>
+    <p class="hint">Какой урок у тебя? Выбор запомнится и для следующих недель.</p>
+    <div class="stack">
+      ${slot.options.map((o, i) => `<button class="${resolved && resolved !== '-' && resolved.label === o.label ? 'primary' : 'ghost'}" data-opt="${i}">${esc(o.subject)} · ${esc(o.teachers.join('/'))} · ${esc(o.room)}</button>`).join('')}
+      <button class="${resolved === '-' ? 'primary' : 'ghost'}" data-opt="-">У меня в это время нет урока</button>
+      ${current ? `<button class="danger" data-opt="reset">Сбросить выбор</button>` : ''}
+    </div>`, s => {
+    s.querySelectorAll('[data-opt]').forEach(b => b.addEventListener('click', () => {
+      const v = b.dataset.opt;
+      if (v === 'reset') Store.remove('groupPicks', current.id);
+      else {
+        const opt = v === '-' ? null : slot.options[+v];
+        Store.upsert('groupPicks', Object.assign(current || {}, {
+          key: slot.pickKey, slot: slot.key,
+          choice: opt ? opt.label : '-', subject: opt ? opt.subject : null, room: opt ? opt.room : null,
+        }));
+      }
+      closeSheet(); render();
+    }));
+  });
 }
 
 function openSchoolCell(w, l) {

@@ -1,5 +1,5 @@
 // Кэш, чтобы приложение открывалось и без интернета
-const CACHE = 'kalendar-v5';
+const CACHE = 'kalendar-v6';
 const FILES = ['./', 'index.html', 'styles.css', 'config.js', 'tz.js', 'store.js', 'sync.js', 'events.js', 'app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
