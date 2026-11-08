@@ -74,6 +74,12 @@ const Sync = (() => {
       localStorage.removeItem(LAST_KEY);
       Store.markAllPending();
     }
+    // Разовая полная пересинхронизация: выбор групп и другие записи, пропущенные на этом устройстве, придут заново
+    if (localStorage.getItem('kalendar-resync') !== '2') {
+      localStorage.setItem('kalendar-resync', '2');
+      localStorage.removeItem(LAST_KEY);
+      Store.markAllPending();
+    }
     subscribe();
     schedule(0);
   }
@@ -157,6 +163,8 @@ const Sync = (() => {
       setStatus('off', 'Вход не выполнен');
     },
     now() { schedule(0); },
+    // Отправить всё, что есть на этом устройстве, и заново принять всё из облака
+    resync() { localStorage.removeItem(LAST_KEY); Store.markAllPending(); schedule(0); },
 
     // Уведомления: подписать это устройство на напоминания с сервера
     async pushState() {

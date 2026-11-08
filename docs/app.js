@@ -761,7 +761,7 @@ function renderData() {
     ? `<div class="card">
         <div class="sync-line"><span class="sync-dot ${st.state}"></span>${esc(st.text)}</div>
         <p class="hint">Вход выполнен: ${esc(u.email)}. Записи сами появляются на телефоне и ноутбуке.</p>
-        <div class="actions"><button class="ghost" id="syncNow">Синхронизировать сейчас</button><span class="grow"></span><button class="danger" id="signOut">Выйти</button></div>
+        <div class="actions"><button class="ghost" id="syncNow">Синхронизировать сейчас</button><button class="ghost" id="resyncAll">Заново, полностью</button><span class="grow"></span><button class="danger" id="signOut">Выйти</button></div>
       </div>`
     : `<form class="card entry-form" id="loginForm">
         <p class="hint">Войди, чтобы записи были общими на телефоне и ноутбуке. Почта и пароль — те, что заданы в Supabase.</p>
@@ -800,6 +800,7 @@ function renderData() {
     }
   });
   if ($('#syncNow')) $('#syncNow').addEventListener('click', () => Sync.now());
+  if ($('#resyncAll')) $('#resyncAll').addEventListener('click', () => { Sync.resync(); toast('Отправляю и принимаю всё заново'); });
   if ($('#pushBtn')) refreshPush();
   if ($('#signOut')) $('#signOut').addEventListener('click', async () => {
     if (!confirm('Выйти? Записи на этом устройстве останутся, но перестанут синхронизироваться.')) return;
