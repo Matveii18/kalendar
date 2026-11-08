@@ -664,7 +664,7 @@ function autoWeekTable(w) {
   const breakBefore = new Set([3, 5, 7, 9]);
   const gridRow = p => p + 1 + [...breakBefore].filter(b => b <= p).length;
   const rowSizes = ['auto'];
-  for (let p = 1; p <= maxP; p++) { if (breakBefore.has(p)) rowSizes.push('16px'); rowSizes.push('minmax(48px, auto)'); }
+  for (let p = 1; p <= maxP; p++) { if (breakBefore.has(p)) rowSizes.push('9px'); rowSizes.push('minmax(48px, auto)'); }
   let cells = `<div class="tt-cell tt-head" style="grid-row:1"></div>` + days.map(d => `<div class="tt-cell tt-head" style="grid-row:1">${WD[d]} ${Number(addDays(w.monday, d - 1).slice(8))}</div>`).join('');
   for (let p = 1; p <= maxP; p++) {
     cells += `<div class="tt-cell tt-num" style="grid-row:${gridRow(p)}"><b>${p}</b><small>${(BELLS[p] || ['', ''])[0]}<br>${(BELLS[p] || ['', ''])[1]}</small></div>`;
