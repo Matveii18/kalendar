@@ -38,12 +38,14 @@
       <div class="drawer-title">Календарь</div>
       <button data-go="month">Месяц</button>
       <button data-go="today">Сегодня / Завтра</button>
-      <div class="drawer-sep">Справочники</div>
-      <button data-go="dir:subjects">Предметы</button>
-      <button data-go="dir:teachers">Учителя</button>
-      <button data-go="dir:tutors">Репетиторы</button>
-      <button data-go="dir:subs">Подписки</button>
       <button data-go="school">Расписание школы</button>
+      <button class="drawer-group" id="dirToggle" aria-expanded="false" aria-controls="dirGroup">Справочники <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="drawer-sub" id="dirGroup" hidden>
+        <button data-go="dir:subjects">Предметы</button>
+        <button data-go="dir:teachers">Учителя</button>
+        <button data-go="dir:tutors">Репетиторы</button>
+        <button data-go="dir:subs">Подписки</button>
+      </div>
       <div class="drawer-sep">Данные</div>
       <button data-go="data">Синхронизация <span class="sync-dot" id="syncDot"></span></button>
     </div>

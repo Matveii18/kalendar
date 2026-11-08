@@ -187,7 +187,7 @@ function bindList(root) {
 /* ---------- Сегодня / Завтра ---------- */
 
 function renderToday() {
-  $('#title').textContent = 'сегодня';
+  $('#title').textContent = 'сегодня / завтра';
   const today = todayYmd(), tomorrow = addDays(today, 1);
   const hwTomorrow = Store.all('entries').filter(e => e.type === 'hw' && e.date === tomorrow && !e.done);
   const late = overdueHomework();
@@ -616,7 +616,7 @@ function openDirForm(coll, obj) {
 /* ---------- Расписание школы ---------- */
 
 function renderSchool() {
-  $('#title').textContent = 'расписание';
+  $('#title').textContent = 'расписание школы';
   const lessons = Object.keys(BELLS).map(Number);
   const head = `<div class="tt-cell tt-head"></div>` + [1, 2, 3, 4, 5].map(w => `<div class="tt-cell tt-head">${WD[w]}</div>`).join('');
   let rows = '';
@@ -829,6 +829,16 @@ async function refreshPush() {
 }
 
 /* ---------- Меню ---------- */
+
+// Список справочников в меню сворачивается; состояние запоминается
+(function () {
+  const btn = $('#dirToggle'), box = $('#dirGroup');
+  const set = open => { box.hidden = !open; btn.setAttribute('aria-expanded', String(open)); try { localStorage.setItem('kalendar-dirs-open', open ? '1' : '0'); } catch (e) {} };
+  let open = false;
+  try { open = localStorage.getItem('kalendar-dirs-open') === '1'; } catch (e) {}
+  set(open);
+  btn.addEventListener('click', () => set(box.hidden));
+})();
 
 function openDrawer() { $('#drawer').classList.add('open'); $('#drawer').setAttribute('aria-hidden', 'false'); }
 function closeDrawer() { $('#drawer').classList.remove('open'); $('#drawer').setAttribute('aria-hidden', 'true'); }

@@ -34,6 +34,7 @@ input, select, textarea { font: inherit; color: var(--text); }
   padding: calc(10px + env(safe-area-inset-top)) 12px 8px;
   position: sticky; top: 0; background: var(--bg); z-index: 5;
 }
+.topbar h1::first-letter { text-transform: uppercase; }
 .topbar h1 { flex: 1; margin: 0 0 0 8px; font-size: 26px; font-weight: 700; letter-spacing: .2px; }
 .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; }
 .icon-btn:hover { background: #1a1a1a; }
@@ -150,6 +151,12 @@ input, select, textarea { font: inherit; color: var(--text); }
 .drawer-title { font-size: 22px; font-weight: 700; padding: 0 14px 14px; }
 .drawer-panel button { text-align: left; padding: 12px 14px; border-radius: 10px; font-size: 16px; }
 .drawer-panel button:hover { background: #1f1f22; }
+.drawer-group { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px !important; text-transform: uppercase; letter-spacing: .6px; margin-top: 10px; }
+.drawer-group svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
+.drawer-group[aria-expanded="true"] svg { transform: rotate(180deg); }
+.drawer-sub { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; }
+.drawer-sub button { text-align: left; padding: 12px 14px; border-radius: 10px; font-size: 16px; }
+.drawer-sub button:hover { background: #1f1f22; }
 .drawer-sep { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; padding: 16px 14px 6px; }
 
 /* ---- Шторка с формой ---- */
