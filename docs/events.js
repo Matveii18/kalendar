@@ -2,14 +2,18 @@
 // раскрывает повторы, переводит время в немецкое, добавляет уроки и подписки.
 
 const TYPES = {
-  hw:     { label: 'ДЗ',          color: '#f5a524' },
-  tutor:  { label: 'Репетитор',   color: '#a78bfa' },
+  period: { label: 'Период',      color: '#4a8dff' },
+  test:   { label: 'Контрольная', color: '#ff4d4f' },
   task:   { label: 'Задача',      color: '#3ecf8e' },
-  period: { label: 'Период',      color: '#22c3c3' },
-  other:  { label: 'Другое',      color: '#5aa9ff' },
-  sub:    { label: 'Подписка',    color: '#f472b6' },
-  school: { label: 'Урок',        color: '#8b95a7' },
+  hw:     { label: 'ДЗ',          color: '#f5c518' },
+  school: { label: 'Школа',       color: '#8b95a7' },
+  tutor:  { label: 'Репетитор',   color: '#a78bfa' },
+  other:  { label: 'Другое',      color: '#f472b6' },
+  sub:    { label: 'Подписка',    color: '#ff9f43' },
 };
+
+// Порядок записей в дне: сначала по типу, выполненные задачи и ДЗ — в самый низ
+const TYPE_ORDER = { period: 0, test: 1, task: 2, hw: 3, school: 4, tutor: 5, other: 6, sub: 7 };
 
 const PERIOD_KINDS = ['каникулы', 'отпуск', 'поездка', 'другое'];
 
@@ -49,6 +53,18 @@ function schoolLessons(ymd) {
       title: `${s.lesson}. ${Store.name('subjects', s.subjectId) || 'Урок'}`,
       sub: [teacherNames(s.teacherIds), s.room].filter(Boolean).join(' · '),
     }));
+}
+
+// Все уроки дня одним пунктом: «Школа» с временем от первого до последнего урока
+function schoolItem(ymd) {
+  const lessons = schoolLessons(ymd);
+  if (!lessons.length) return null;
+  return {
+    key: `school:${ymd}`, type: 'school', ymd, lessons,
+    start: lessons[0].start, end: lessons[lessons.length - 1].end,
+    title: 'Школа',
+    sub: lessons.map(l => l.title).join(', '),
+  };
 }
 
 function overlaps(aStart, aEnd, bStart, bEnd) {
@@ -111,6 +127,16 @@ function itemsForDay(ymd) {
             title: Store.name('subjects', e.subjectId) || 'ДЗ',
             sub: [e.text, teacherNames(e.teacherIds)].filter(Boolean).join(' · '),
             done: !!e.done, overdue: !e.done && e.date < today, checkable: true,
+          });
+        }
+        break;
+
+      case 'test':
+        if (e.date === ymd) {
+          items.push({
+            key: `test:${e.id}`, type: 'test', entry: e, ymd, allDay: true,
+            title: Store.name('subjects', e.subjectId) || 'Контрольная',
+            sub: [e.topic, teacherNames(e.teacherIds)].filter(Boolean).join(' · '),
           });
         }
         break;
@@ -183,13 +209,16 @@ function itemsForDay(ymd) {
     }
   }
 
-  items.push(...schoolLessons(ymd));
+  const school = schoolItem(ymd);
+  if (school) items.push(school);
 
-  const order = { period: 0, hw: 1, task: 2, sub: 3, other: 4 };
+  const rank = it => (it.done ? 100 : 0) + (TYPE_ORDER[it.type] ?? 50);
   items.sort((a, b) => {
+    const r = rank(a) - rank(b);
+    if (r) return r;
     if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
-    if (a.allDay) return (order[a.type] ?? 9) - (order[b.type] ?? 9);
-    return hmToMin(a.start) - hmToMin(b.start);
+    if (!a.allDay) return hmToMin(a.start) - hmToMin(b.start);
+    return 0;
   });
   return items;
 }

@@ -103,18 +103,12 @@ function renderMonth() {
 
 function cellBars(items) {
   const bars = [];
-  const lessons = items.filter(i => i.type === 'school');
   for (const it of items) {
-    if (it.type === 'school') continue;
     const cls = ['bar'];
     if (it.period) { cls.push('period'); if (it.isStart) cls.push('ps'); if (it.isEnd) cls.push('pe'); }
     if (it.done) cls.push('done');
     if (it.overdue) cls.push('late');
     bars.push(`<span class="${cls.join(' ')}" style="--c:${TYPES[it.type].color}">${esc(it.start ? `${it.start} ${it.title}` : it.title)}</span>`);
-  }
-  if (lessons.length) {
-    const a = lessons[0].entry.lesson, b = lessons[lessons.length - 1].entry.lesson;
-    bars.push(`<span class="bar" style="--c:${TYPES.school.color}">Уроки ${a === b ? a : `${a}–${b}`}</span>`);
   }
   const max = 3;
   if (bars.length > max) return bars.slice(0, max - 1).join('') + `<span class="more">+${bars.length - max + 1}</span>`;
@@ -161,7 +155,7 @@ function itemRow(it) {
   const check = it.checkable
     ? `<span class="check ${it.done ? 'on' : ''}" data-check="${esc(it.key)}" role="checkbox" aria-checked="${!!it.done}"></span>` : '';
   const time = it.allDay
-    ? `<div class="time"><span class="tag">${it.type === 'hw' ? 'сдать' : TYPES[it.type].label.toLowerCase()}</span></div>`
+    ? `<div class="time"><span class="tag">${it.type === 'hw' ? 'сдать' : it.type === 'test' ? 'контрольная' : TYPES[it.type].label.toLowerCase()}</span></div>`
     : `<div class="time"><b>${it.start}${it.end ? `<span class="to">–${it.end}</span>` : ''}</b>${it.alt ? `<small>${esc(it.alt)}</small>` : ''}</div>`;
   const warn = it.conflicts && it.conflicts.length
     ? `<div class="warn">⚠ Накладка с уроками: ${it.conflicts.map(c => esc(c.title)).join(', ')}</div>` : '';
@@ -184,7 +178,7 @@ function bindList(root) {
     const it = itemIndex.get(el.dataset.key);
     if (!it) return;
     if (it.type === 'sub') openDirForm('subs', it.entry);
-    else if (it.type === 'school') openSchoolCell(it.entry.weekday, it.entry.lesson);
+    else if (it.type === 'school') go('school');
     else openEntryForm(it.entry.type, it.entry, it);
   }));
 }
@@ -196,8 +190,10 @@ function renderToday() {
   const today = todayYmd(), tomorrow = addDays(today, 1);
   const hwTomorrow = Store.all('entries').filter(e => e.type === 'hw' && e.date === tomorrow && !e.done);
   const late = overdueHomework();
+  const testsTomorrow = Store.all('entries').filter(e => e.type === 'test' && e.date === tomorrow);
 
   let alert = '';
+  if (testsTomorrow.length) alert += `<div class="callout test">📝 Завтра контрольная: ${testsTomorrow.map(e => esc(Store.name('subjects', e.subjectId) || e.topic || 'Контрольная')).join(', ')}</div>`;
   if (hwTomorrow.length) alert += `<div class="callout hw">📚 На завтра ДЗ: ${hwTomorrow.length}. ${hwTomorrow.map(e => esc(Store.name('subjects', e.subjectId) || 'ДЗ')).join(', ')}</div>`;
   if (late.length) alert += `<div class="callout late">Просроченных ДЗ: ${late.length}. ${late.map(e => `${esc(Store.name('subjects', e.subjectId) || 'ДЗ')} (${fmtShort(e.date)})`).join(', ')}</div>`;
 
@@ -234,7 +230,7 @@ $('#sheetWrap').addEventListener('click', e => { if (e.target.id === 'sheetWrap'
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet(); closeDrawer(); } });
 
 function openTypePicker(ymd) {
-  const types = ['hw', 'tutor', 'task', 'period', 'other'];
+  const types = ['period', 'test', 'task', 'hw', 'tutor', 'other'];
   openSheet(`
     <div class="sheet-head"><h3>Добавить на ${fmtShort(ymd)}</h3></div>
     <div class="type-grid">
@@ -305,6 +301,13 @@ function openEntryForm(type, entry, item, ymd) {
       ${field('Что сделать', `<textarea name="text" rows="3" placeholder="Задание">${esc(e.text)}</textarea>`)}
       ${field('Сдать до', `<input type="date" name="date" value="${e.date || date}" required>`)}
       <label class="check-line"><input type="checkbox" name="done" ${e.done ? 'checked' : ''}> Сделано</label>`;
+  } else if (type === 'test') {
+    body = `
+      ${field('Предмет', dirSelect('subjectId', 'subjects', e.subjectId, 'Выбери предмет'))}
+      ${field('Учитель', dirSelect('teacher1', 'teachers', (e.teacherIds || [])[0], 'Выбери учителя'))}
+      ${field('Второй учитель', dirSelect('teacher2', 'teachers', (e.teacherIds || [])[1], 'Нет'))}
+      ${field('Дата', `<input type="date" name="date" value="${e.date || date}" required>`)}
+      ${field('Тема', `<textarea name="topic" rows="2" placeholder="Что будет на контрольной">${esc(e.topic)}</textarea>`)}`;
   } else if (type === 'tutor') {
     body = `
       ${field('Репетитор', dirSelect('tutorId', 'tutors', e.tutorId, 'Выбери репетитора'))}
@@ -447,6 +450,13 @@ function buildEntry(type, base, v, form) {
     if (!need(v.subjectId || v.text, 'Выбери предмет или напиши задание')) return null;
     Object.assign(e, {
       subjectId: v.subjectId || null, text: v.text, date: v.date, done: !!form.done.checked,
+      teacherIds: [v.teacher1, v.teacher2].filter((x, i, a) => x && a.indexOf(x) === i),
+    });
+  } else if (type === 'test') {
+    if (!need(v.date, 'Укажи дату контрольной')) return null;
+    if (!need(v.subjectId || v.topic, 'Выбери предмет или напиши тему')) return null;
+    Object.assign(e, {
+      subjectId: v.subjectId || null, topic: v.topic, date: v.date,
       teacherIds: [v.teacher1, v.teacher2].filter((x, i, a) => x && a.indexOf(x) === i),
     });
   } else if (type === 'tutor') {

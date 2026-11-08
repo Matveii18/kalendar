@@ -135,6 +135,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 .day-block h2 span { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 6px; }
 .callout { border-radius: 12px; padding: 12px 14px; margin: 6px 0 10px; font-size: 14px; }
 .callout.hw { background: #2d2310; color: #ffd27a; }
+.callout.test { background: #2d1416; color: #ff8a8c; }
 .callout.late { background: #2d1414; color: #ff9b9b; }
 .hint { color: var(--muted); font-size: 14px; }
 
